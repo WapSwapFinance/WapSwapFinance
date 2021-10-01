@@ -7,5 +7,11 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 Please make sure to update tests as appropriate.
 
+## Authors
+Anonymous Group of Blockchain Developers 🙂
+
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
+
+## Project Status
+Undergoing More Chain Support
