@@ -553,7 +553,7 @@ library SafeBEP20 {
     }
 }
 
-abstract contract XCS_Interface is Context, IBEP20, Ownable {
+abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
   using SafeMath for uint256;
 
   mapping (address => uint256) private _balances;
@@ -702,7 +702,7 @@ abstract contract XCS_Interface is Context, IBEP20, Ownable {
   }
 }
 
-contract TCS_TOKEN is XCS_Interface('TestSwap', 'TCS', 18), IChainSwapToken{
+contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapToken{
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
     
@@ -727,7 +727,7 @@ contract TCS_TOKEN is XCS_Interface('TestSwap', 'TCS', 18), IChainSwapToken{
     address public FEE_ADDRESS;
     address public CHAIN_OWNER;
     
-    XCS_Interface public immutable _xcs;
+    WAPSWAP_Interface public immutable _xcs;
     mapping (address => CrossChainSwap[]) public _crossSwapper;
     mapping (address => ClaimFromSwap[]) public _crossClaimer;
     mapping (address => uint) public _allCross;
@@ -744,7 +744,7 @@ contract TCS_TOKEN is XCS_Interface('TestSwap', 'TCS', 18), IChainSwapToken{
     
     constructor (uint256 _amount) {
         _mint(_msgSender(), toBig(_amount));
-        _xcs = XCS_Interface(this);
+        _xcs = WAPSWAP_Interface(this);
         FEE_ADDRESS = _msgSender();
         CHAIN_OWNER = _msgSender();
     }
