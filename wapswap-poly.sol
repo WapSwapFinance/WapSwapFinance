@@ -554,6 +554,11 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
   uint8 private _decimals;
   string private _symbol;
   string private _name;
+  
+  modifier onlyContract() {
+    require(_isContract(msg.sender), "only contract allowed");
+    _;
+  }
 
   constructor(string memory NAME, string memory SYMBOL, uint8 DECIMALS) {
     _name = NAME;
@@ -639,7 +644,7 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     return true;
   }
 
-  function mintRewards(address account, uint256 amount) external onlyOwner returns (bool) {
+  function mintRewards(address account, uint256 amount) external onlyOwner onlyContract returns (bool) {
     _mint(account, amount);
     return true;
   }
@@ -661,14 +666,6 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     emit Transfer(address(0), account, amount);
   }
   
-  function _mintFromChain(address account, uint256 amount) external onlyOwner {
-      _mint(account, amount);
-  }
-  
-  function _burnToChain(address account, uint256 amount) external onlyOwner {
-      _burn(account, amount);
-  }
-
   function _burn(address account, uint256 amount) internal {
     require(account != address(0), "BEP20: burn from the zero address");
 
@@ -689,6 +686,18 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     _burn(account, amount);
     _approve(account, _msgSender(), _allowances[account][_msgSender()].sub(amount, "BEP20: burn amount exceeds allowance"));
   }
+  
+  /**
+ * @notice Checks if address is a contract
+ * @dev It prevents contract from being targetted
+ */
+  function _isContract(address addr) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(addr)
+        }
+        return size > 0;
+    }
 }
 
 interface IEncoder {
@@ -700,7 +709,7 @@ interface IDecoder {
     function decrypt(bytes calldata _data) external view returns (string memory, uint256, address, string memory, bool, uint256, string memory);
 }
 
-contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
+contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
     
@@ -727,7 +736,7 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
     
     string[] public SUPPORTED_CHAINS;
     address public FEE_ADDRESS;
-    address public CHAIN_OWNER;
+    address public FEE_SETTER;
     
     WAPSWAP_Interface public immutable _xcs;
     mapping (address => mapping(uint256 => CrossChainSwap)) public _crossSwapper;
@@ -745,8 +754,8 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
         _;
     }
     
-    modifier onlyContract() {
-        require(_isContract(msg.sender), "only contract allowed");
+    modifier onlyFeeSetter() {
+        require(FEE_SETTER == _msgSender(), "only fee address allowed");
         _;
     }
     
@@ -754,26 +763,26 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
         _mint(_msgSender(), toBig(_amount));
         _xcs = WAPSWAP_Interface(this);
         FEE_ADDRESS = _msgSender();
-        CHAIN_OWNER = _msgSender();
+        FEE_SETTER = _msgSender();
     }
     
-    function setEncoder(address _encoder) external onlyOwner {
+    function setEncoder(address _encoder) external onlyFeeSetter {
         encoder = _encoder;
     }
     
-    function setDecoder(address _decoder) external onlyOwner {
+    function setDecoder(address _decoder) external onlyFeeSetter {
         decoder = _decoder;
     }
     
-    function addSupportedChain(string memory _chain) external onlyOwner {
+    function addSupportedChain(string memory _chain) external onlyFeeSetter {
         SUPPORTED_CHAINS.push(_chain);
     }
     
-    function deleteChain(uint _idx) external onlyOwner {
+    function deleteChain(uint _idx) external onlyFeeSetter {
         delete SUPPORTED_CHAINS[_idx];
     }
     
-    function changeFeeAddress(address _feeAddress) external onlyOwner {
+    function changeFeeAddress(address _feeAddress) external onlyFeeSetter {
         FEE_ADDRESS = _feeAddress;
     }
 
@@ -781,7 +790,7 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
         _setReferrer(msg.sender, _referrer);
     }
     
-    function changeSwapFee(uint _fee) external onlyOwner {
+    function changeSwapFee(uint _fee) external onlyFeeSetter {
         _crossSwapFee = _fee;
     }
     
@@ -807,7 +816,8 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
     }
     
     function swapToChain(string memory chain, uint256 _amount, string calldata _anotherChainAddress) external {
-        require(_amount >= toBig(MIN_AMOUNT_TO_SWAP), '[+] Invalid Amount To Swap or Less than Minimum');
+        require(_amount >= toBig(MIN_AMOUNT_TO_SWAP), '[!] Invalid Amount To Swap or Less than Minimum');
+        require(validChain(chain), '[!] Invalid Chain To Swap!');
         _approve(msg.sender, address(this), _amount);
         uint256 getAmount = _takeFee(_amount);
         bool taken = _takeAmount(getAmount);
@@ -895,17 +905,5 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
         _crossClaimer[_msgSender()][_id]._isClaimed = true;
         _crossClaims[_msgSender()].push(_id);
         _allClaims[_msgSender()] = _allClaims[_msgSender()] + 1;
-    }
-    
-    /**
-     * @notice Checks if address is a contract
-     * @dev It prevents contract from being targetted
-     */
-    function _isContract(address addr) internal view returns (bool) {
-        uint256 size;
-        assembly {
-            size := extcodesize(addr)
-        }
-        return size > 0;
     }
 }
