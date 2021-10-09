@@ -717,6 +717,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         string          _xcsChain;
         uint256         _xcsAmount;
         bytes           _authToken;
+        uint            _claimed;
         string          _anotherChainAddress;
     }
     
@@ -751,8 +752,8 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         _;
     }
     
-    constructor (uint256 _amount) {
-        _mint(_msgSender(), toBig(_amount));
+    constructor (uint256 _amount, address _wapOwner) {
+        _mint(_wapOwner, toBig(_amount));
         _xcs = WAPSWAP_Interface(this);
         FEE_ADDRESS = _msgSender();
         FEE_SETTER = _msgSender();
@@ -814,6 +815,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
                 chain,
                 getAmount,
                 IEncoder(encoder).encrypt(chain, getAmount, msg.sender, compareStrings(_anotherChainAddress, "") ? "" : _anotherChainAddress),
+                block.timestamp,
                 compareStrings(_anotherChainAddress, "") ? "" : _anotherChainAddress
             );
             _crossSwaps[msg.sender].push(block.number);
