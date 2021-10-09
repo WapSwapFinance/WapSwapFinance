@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: MIT 
 pragma solidity 0.8.6;
 
-interface IChainSwapToken {
-    event EmissionStarted(uint blockNumber);
-    event EmissionEnded(uint blockNumber);
-    event EmissionChanged(uint emission, uint blockNumber);
-    
-    event CrossSwapToChain(string toChain, uint256 _amount, address who, uint _id);
-    event CrossSwapClaim(string fromChain, uint256 _amount);
-    event ReadyForClaim(string fromChain, uint256 _amount);
-}
-
-
 interface IBEP20 {
   /**
    * @dev Returns the amount of tokens in existence.
@@ -565,6 +554,11 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
   uint8 private _decimals;
   string private _symbol;
   string private _name;
+  
+  modifier onlyContract() {
+    require(_isContract(msg.sender), "only contract allowed");
+    _;
+  }
 
   constructor(string memory NAME, string memory SYMBOL, uint8 DECIMALS) {
     _name = NAME;
@@ -672,14 +666,6 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     emit Transfer(address(0), account, amount);
   }
   
-  function _mintFromChain(address account, uint256 amount) external onlyOwner {
-      _mint(account, amount);
-  }
-  
-  function _burnToChain(address account, uint256 amount) external onlyOwner {
-      _burn(account, amount);
-  }
-
   function _burn(address account, uint256 amount) internal {
     require(account != address(0), "BEP20: burn from the zero address");
 
@@ -700,9 +686,30 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     _burn(account, amount);
     _approve(account, _msgSender(), _allowances[account][_msgSender()].sub(amount, "BEP20: burn amount exceeds allowance"));
   }
+  
+  /**
+ * @notice Checks if address is a contract
+ * @dev It prevents contract from being targetted
+ */
+  function _isContract(address addr) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(addr)
+        }
+        return size > 0;
+    }
 }
 
-contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapToken{
+interface IEncoder {
+    function encrypt(string calldata _chain, uint256 _amount, address _swapper, string memory _anotherChainAddress, uint _block) external view returns (bytes calldata);
+    function getChain() external view returns (string memory);
+}
+
+interface IDecoder {
+    function decrypt(bytes calldata _data) external view returns (string memory, uint256, address, string memory, bool, uint256, string memory);
+}
+
+contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
     
@@ -710,13 +717,17 @@ contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapTok
         address         _xcsHolder;
         string          _xcsChain;
         uint256         _xcsAmount;
+        uint            _claimed;
+        uint            _block;
+        string          _anotherChainAddress;
     }
     
     struct ClaimFromSwap {
         address         _xcsClaimer;
         string          _xcsChain;
         uint256         _xcsAmount;
-        bytes32         _txnHash;
+        uint            _claimed;
+        bytes           _authToken;
         bool            _isClaimed;
     }
     
@@ -725,20 +736,26 @@ contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapTok
     
     string[] public SUPPORTED_CHAINS;
     address public FEE_ADDRESS;
-    address public CHAIN_OWNER;
+    address public FEE_SETTER;
     
     WAPSWAP_Interface public immutable _xcs;
-    mapping (address => CrossChainSwap[]) public _crossSwapper;
-    mapping (address => ClaimFromSwap[]) public _crossClaimer;
+    mapping (address => mapping(uint256 => CrossChainSwap)) public _crossSwapper;
+    mapping (address => uint256[]) public _crossSwaps;
+    mapping (address => mapping(uint256 => ClaimFromSwap)) public _crossClaimer;
+    mapping (address => uint256[]) public _crossClaims;
     mapping (address => uint) public _allCross;
+    mapping (address => uint) public _allClaims;
     
-    modifier onlyChainOwner() {
-        require(CHAIN_OWNER == _msgSender(), "Ownable: caller is not the owner");
+    address encoder;
+    address decoder;
+    
+    modifier onlyEncoder() {
+        require(encoder == _msgSender(), "Ownable: caller is not the encoder");
         _;
     }
     
-    modifier onlyContract() {
-        require(_isContract(msg.sender), "only contract allowed");
+    modifier onlyFeeSetter() {
+        require(FEE_SETTER == _msgSender(), "only fee address allowed");
         _;
     }
     
@@ -746,10 +763,26 @@ contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapTok
         _mint(_msgSender(), toBig(_amount));
         _xcs = WAPSWAP_Interface(this);
         FEE_ADDRESS = _msgSender();
-        CHAIN_OWNER = _msgSender();
+        FEE_SETTER = _msgSender();
     }
     
-    function changeFeeAddress(address _feeAddress) external onlyOwner onlyContract {
+    function setEncoder(address _encoder) external onlyFeeSetter {
+        encoder = _encoder;
+    }
+    
+    function setDecoder(address _decoder) external onlyFeeSetter {
+        decoder = _decoder;
+    }
+    
+    function addSupportedChain(string memory _chain) external onlyFeeSetter {
+        SUPPORTED_CHAINS.push(_chain);
+    }
+    
+    function deleteChain(uint _idx) external onlyFeeSetter {
+        delete SUPPORTED_CHAINS[_idx];
+    }
+    
+    function changeFeeAddress(address _feeAddress) external onlyFeeSetter {
         FEE_ADDRESS = _feeAddress;
     }
 
@@ -757,7 +790,7 @@ contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapTok
         _setReferrer(msg.sender, _referrer);
     }
     
-    function changeSwapFee(uint _fee) external onlyOwner onlyContract {
+    function changeSwapFee(uint _fee) external onlyFeeSetter {
         _crossSwapFee = _fee;
     }
     
@@ -765,33 +798,39 @@ contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapTok
         return value.mul(1e18);
     }
     
-    function _takeAmount(uint256 _amount) internal returns (bool) {
+    function _takeAmount(uint256 _amount) public returns (bool) {
         _burn(_msgSender(), _amount);
         return true;
     }
     
-    function _takeFee(uint256 _amount) internal returns (uint256) {
+    function _takeFee(uint256 _amount) public returns (uint256) {
         uint256 _fee = _amount.mul(_crossSwapFee).div(1e2);
         uint256 _totalAmount = _amount.sub(_fee);
         _xcs.transferFrom(_msgSender(), FEE_ADDRESS, _fee);
         return _totalAmount;
     }
     
-    function swapToChain(string memory chain, uint256 _amount) external {
-        require(_amount > toBig(MIN_AMOUNT_TO_SWAP), '[+] Invalid Amount To Swap or Less than Minimum');
+    function getSwaps(uint256 _id) external view returns (bytes memory _authToken) {
+        CrossChainSwap memory _swapper = _crossSwapper[msg.sender][_id];
+        _authToken = IEncoder(encoder).encrypt(_swapper._xcsChain, _swapper._xcsAmount, msg.sender, compareStrings(_swapper._anotherChainAddress, "") ? "" : _swapper._anotherChainAddress, _swapper._block);
+    }
+    
+    function swapToChain(string memory chain, uint256 _amount, string calldata _anotherChainAddress) external {
+        require(_amount >= toBig(MIN_AMOUNT_TO_SWAP), '[+] Invalid Amount To Swap or Less than Minimum');
         _approve(msg.sender, address(this), _amount);
         uint256 getAmount = _takeFee(_amount);
         bool taken = _takeAmount(getAmount);
         if(taken) {
-            _crossSwapper[msg.sender].push(
-                CrossChainSwap(
-                    msg.sender,
-                    chain,
-                    getAmount
-                )
+            _crossSwapper[msg.sender][block.number] = CrossChainSwap(
+                compareStrings(_anotherChainAddress, "") ? msg.sender : address(0),
+                chain,
+                getAmount,
+                block.timestamp,
+                block.number,
+                compareStrings(_anotherChainAddress, "") ? "" : _anotherChainAddress
             );
+            _crossSwaps[msg.sender].push(block.number);
             _allCross[msg.sender] = _allCross[msg.sender] + 1;
-            emit CrossSwapToChain(chain, getAmount, msg.sender, _allCross[msg.sender]);
         }
     }
     
@@ -800,42 +839,70 @@ contract WAPSWAP_TOKEN is WAPSWAP_Interface('WAPSWAP', 'WAP', 18), IChainSwapTok
     }
     
     function getAllClaims(address _claimer) external view returns (uint) {
-        return _crossClaimer[_claimer].length;
+        return _allClaims[_claimer];
     }
     
-    function claimFromChain(uint _id) external {
-        if(_crossClaimer[_msgSender()].length > _id && !_crossClaimer[_msgSender()][_id]._isClaimed){
-            ClaimFromSwap memory _thisClaim = _crossClaimer[_msgSender()][_id];
-            uint256 _amount = _crossClaimer[_msgSender()][_id]._xcsAmount;
-            _mint(_msgSender(), _amount);
-            _crossClaimer[_msgSender()][_id]._isClaimed = true;
-            emit CrossSwapClaim(_thisClaim._xcsChain, _amount);
+    function compareStrings(string memory a, string memory b) public pure returns (bool) {
+        return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
+    }
+    
+    function validChain(string memory _chain) internal view returns (bool) {
+        for(uint i; i < SUPPORTED_CHAINS.length; i ++){
+            if(compareStrings(SUPPORTED_CHAINS[i], _chain)){
+                return true;
+            }
         }
-    }
-    
-    function setClaimFromChain(address _swapper, string memory fromChain, uint256 _amount, bytes32 _hash) external onlyChainOwner onlyContract {
-        _crossClaimer[_swapper].push(
-            ClaimFromSwap(
-                _swapper,
-                fromChain,
-                _amount,
-                _hash,
-                false
-            )
-        );
         
+        return false;
     }
     
-    /**
-     * @notice Checks if address is a contract
-     * @dev It prevents contract from being targetted
-     */
-    function _isContract(address addr) internal view returns (bool) {
-        uint256 size;
-        assembly {
-            size := extcodesize(addr)
+    function parseAddr(string memory _a) public pure returns (address _parsedAddress) {
+        bytes memory tmp = bytes(_a);
+        uint160 iaddr = 0;
+        uint160 b1;
+        uint160 b2;
+        for (uint i = 2; i < 2 + 2 * 20; i += 2) {
+            iaddr *= 256;
+            b1 = uint160(uint8(tmp[i]));
+            b2 = uint160(uint8(tmp[i + 1]));
+            if ((b1 >= 97) && (b1 <= 102)) {
+                b1 -= 87;
+            } else if ((b1 >= 65) && (b1 <= 70)) {
+                b1 -= 55;
+            } else if ((b1 >= 48) && (b1 <= 57)) {
+                b1 -= 48;
+            }
+            if ((b2 >= 97) && (b2 <= 102)) {
+                b2 -= 87;
+            } else if ((b2 >= 65) && (b2 <= 70)) {
+                b2 -= 55;
+            } else if ((b2 >= 48) && (b2 <= 57)) {
+                b2 -= 48;
+            }
+            iaddr += (b1 * 16 + b2);
         }
-        return size > 0;
+        return address(iaddr);
     }
     
+    function claimFromChainData(bytes calldata _data) external {
+        (string memory _targetedChain, uint256 _amount, address _swapper, string memory _fromChain,, uint256 _id, string memory another) = IDecoder(decoder).decrypt(_data);
+        require(compareStrings(_targetedChain, IEncoder(encoder).getChain()), '[!] Not the targeted Chain');
+        require(validChain(_fromChain), '[!] Not A Valid Chain Call');
+        require(!_crossClaimer[_msgSender()][_id]._isClaimed, '[!] Not a Valid ID to claim');
+        if(!compareStrings(another, "")){
+            require(parseAddr(another) == msg.sender, '[!] The Caller is not the Swapper');
+            _swapper = parseAddr(another);
+        }else{
+            require(_swapper == _msgSender(), '[!] Invalid Call From Sender');
+        }
+        _mint(_swapper, _amount);
+        _crossClaimer[_msgSender()][_id]._xcsClaimer = _msgSender();
+        _crossClaimer[_msgSender()][_id]._xcsChain = _fromChain;
+        _crossClaimer[_msgSender()][_id]._xcsAmount = _amount;
+        _crossClaimer[_msgSender()][_id]._authToken = _data;
+        _crossClaimer[_msgSender()][_id]._claimed = block.timestamp;
+        _crossClaimer[_msgSender()][_id]._isClaimed = true;
+        _crossClaims[_msgSender()].push(_id);
+        _allClaims[_msgSender()] = _allClaims[_msgSender()] + 1;
+    }
 }
