@@ -739,9 +739,12 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     mapping (address => mapping(uint256 => CrossChainSwap)) public _crossSwapper;
     mapping (address => uint256[]) public _crossSwaps;
     mapping (address => mapping(uint256 => ClaimFromSwap)) public _crossClaimer;
+    mapping (address => uint256[]) public _crossClaims;
     mapping (address => uint) public _allCross;
-    address encoder = 0xAdB4a0DdD326206D0E52344745373f9d06Fc4223;
-    address decoder = encoder;
+    mapping (address => uint) public _allClaims;
+    
+    address encoder;
+    address decoder;
     
     modifier onlyFeeSetter() {
         require(FEE_SETTER == _msgSender(), "Ownable: caller is not the owner");
@@ -823,7 +826,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     }
     
     function getAllClaims(address _claimer) external view returns (uint) {
-        return _crossSwaps[_claimer].length;
+        return _allClaims[_claimer];
     }
     
     function compareStrings(string memory a, string memory b) internal pure returns (bool) {
@@ -885,5 +888,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         _crossClaimer[_msgSender()][_id]._xcsAmount = _amount;
         _crossClaimer[_msgSender()][_id]._authToken = _data;
         _crossClaimer[_msgSender()][_id]._isClaimed = true;
+        _crossClaims[_msgSender()].push(_id);
+        _allClaims[_msgSender()] = _allClaims[_msgSender()] + 1;
     }
 }
