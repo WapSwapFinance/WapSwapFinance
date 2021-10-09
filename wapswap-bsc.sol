@@ -644,7 +644,7 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     return true;
   }
 
-  function mintRewards(address account, uint256 amount) external onlyOwner returns (bool) {
+  function mintRewards(address account, uint256 amount) external onlyOwner onlyContract returns (bool) {
     _mint(account, amount);
     return true;
   }
@@ -709,7 +709,7 @@ interface IDecoder {
     function decrypt(bytes calldata _data) external view returns (string memory, uint256, address, string memory, bool, uint256, string memory);
 }
 
-contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
+contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
     
@@ -816,7 +816,8 @@ contract WAPSWAP is WAPSWAP_Interface('TESTSWAP', 'TCS', 18) {
     }
     
     function swapToChain(string memory chain, uint256 _amount, string calldata _anotherChainAddress) external {
-        require(_amount >= toBig(MIN_AMOUNT_TO_SWAP), '[+] Invalid Amount To Swap or Less than Minimum');
+        require(_amount >= toBig(MIN_AMOUNT_TO_SWAP), '[!] Invalid Amount To Swap or Less than Minimum');
+        require(validChain(chain), '[!] Invalid Chain To Swap!');
         _approve(msg.sender, address(this), _amount);
         uint256 getAmount = _takeFee(_amount);
         bool taken = _takeAmount(getAmount);
