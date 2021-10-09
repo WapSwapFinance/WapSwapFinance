@@ -686,7 +686,6 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     _burn(account, amount);
     _approve(account, _msgSender(), _allowances[account][_msgSender()].sub(amount, "BEP20: burn amount exceeds allowance"));
   }
-  
   /**
  * @notice Checks if address is a contract
  * @dev It prevents contract from being targetted
@@ -701,7 +700,7 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
 }
 
 interface IEncoder {
-    function encrypt(string calldata _chain, uint256 _amount, address _swapper, string memory _anotherChainAddress, uint _block) external view returns (bytes calldata);
+    function encrypt(string calldata _chain, uint256 _amount, address _swapper, string memory _anotherChainAddress) external view returns (bytes memory);
     function getChain() external view returns (string memory);
 }
 
@@ -717,8 +716,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         address         _xcsHolder;
         string          _xcsChain;
         uint256         _xcsAmount;
-        uint            _claimed;
-        uint            _block;
+        bytes           _authToken;
         string          _anotherChainAddress;
     }
     
@@ -726,7 +724,6 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         address         _xcsClaimer;
         string          _xcsChain;
         uint256         _xcsAmount;
-        uint            _claimed;
         bytes           _authToken;
         bool            _isClaimed;
     }
@@ -742,20 +739,12 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     mapping (address => mapping(uint256 => CrossChainSwap)) public _crossSwapper;
     mapping (address => uint256[]) public _crossSwaps;
     mapping (address => mapping(uint256 => ClaimFromSwap)) public _crossClaimer;
-    mapping (address => uint256[]) public _crossClaims;
     mapping (address => uint) public _allCross;
-    mapping (address => uint) public _allClaims;
-    
-    address encoder;
-    address decoder;
-    
-    modifier onlyEncoder() {
-        require(encoder == _msgSender(), "Ownable: caller is not the encoder");
-        _;
-    }
+    address encoder = 0xAdB4a0DdD326206D0E52344745373f9d06Fc4223;
+    address decoder = encoder;
     
     modifier onlyFeeSetter() {
-        require(FEE_SETTER == _msgSender(), "only fee address allowed");
+        require(FEE_SETTER == _msgSender(), "Ownable: caller is not the owner");
         _;
     }
     
@@ -798,21 +787,16 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         return value.mul(1e18);
     }
     
-    function _takeAmount(uint256 _amount) public returns (bool) {
+    function _takeAmount(uint256 _amount) internal returns (bool) {
         _burn(_msgSender(), _amount);
         return true;
     }
     
-    function _takeFee(uint256 _amount) public returns (uint256) {
+    function _takeFee(uint256 _amount) internal returns (uint256) {
         uint256 _fee = _amount.mul(_crossSwapFee).div(1e2);
         uint256 _totalAmount = _amount.sub(_fee);
         _xcs.transferFrom(_msgSender(), FEE_ADDRESS, _fee);
         return _totalAmount;
-    }
-    
-    function getSwaps(uint256 _id) external view returns (bytes memory _authToken) {
-        CrossChainSwap memory _swapper = _crossSwapper[msg.sender][_id];
-        _authToken = IEncoder(encoder).encrypt(_swapper._xcsChain, _swapper._xcsAmount, msg.sender, compareStrings(_swapper._anotherChainAddress, "") ? "" : _swapper._anotherChainAddress, _swapper._block);
     }
     
     function swapToChain(string memory chain, uint256 _amount, string calldata _anotherChainAddress) external {
@@ -826,8 +810,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
                 compareStrings(_anotherChainAddress, "") ? msg.sender : address(0),
                 chain,
                 getAmount,
-                block.timestamp,
-                block.number,
+                IEncoder(encoder).encrypt(chain, getAmount, msg.sender, compareStrings(_anotherChainAddress, "") ? "" : _anotherChainAddress),
                 compareStrings(_anotherChainAddress, "") ? "" : _anotherChainAddress
             );
             _crossSwaps[msg.sender].push(block.number);
@@ -840,10 +823,10 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     }
     
     function getAllClaims(address _claimer) external view returns (uint) {
-        return _allClaims[_claimer];
+        return _crossSwaps[_claimer].length;
     }
     
-    function compareStrings(string memory a, string memory b) public pure returns (bool) {
+    function compareStrings(string memory a, string memory b) internal pure returns (bool) {
         return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
     }
     
@@ -901,9 +884,6 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         _crossClaimer[_msgSender()][_id]._xcsChain = _fromChain;
         _crossClaimer[_msgSender()][_id]._xcsAmount = _amount;
         _crossClaimer[_msgSender()][_id]._authToken = _data;
-        _crossClaimer[_msgSender()][_id]._claimed = block.timestamp;
         _crossClaimer[_msgSender()][_id]._isClaimed = true;
-        _crossClaims[_msgSender()].push(_id);
-        _allClaims[_msgSender()] = _allClaims[_msgSender()] + 1;
     }
 }
