@@ -1,3 +1,17 @@
+// 
+// 360Code: 2ffd-0sf4-289f-ud24-7vbs
+// 
+// █░█░█ ▄▀█ █▀█ █▀ █░█░█ ▄▀█ █▀█   █▀▀ █ █▄░█ ▄▀█ █▄░█ █▀▀ █▀▀
+// ▀▄▀▄▀ █▀█ █▀▀ ▄█ ▀▄▀▄▀ █▀█ █▀▀   █▀░ █ █░▀█ █▀█ █░▀█ █▄▄ ██▄
+// 
+// 
+// Website: https://wapswap.finance
+// Telegram: https://t.me/WapSwapFinance
+// GitHub: https://github.com/WapSwapFinance
+// 
+// Backed by Team Crypto360 (𝖙𝖍𝖊𝖈𝖗𝖞𝖕𝖙𝖔360.𝖈𝖔𝖒)
+// 
+
 // SPDX-License-Identifier: MIT 
 pragma solidity 0.8.6;
 
@@ -434,7 +448,7 @@ contract Ownable is Context {
    * NOTE: Renouncing ownership will leave the contract without an owner,
    * thereby removing any functionality that is only available to the owner.
    */
-  function renounceOwnership() public onlyOwner {
+  function renounceOwnership() external onlyOwner {
     emit OwnershipTransferred(_owner, address(0));
     _owner = address(0);
   }
@@ -443,7 +457,7 @@ contract Ownable is Context {
    * @dev Transfers ownership of the contract to a new account (`newOwner`).
    * Can only be called by the current owner.
    */
-  function transferOwnership(address newOwner) public onlyOwner {
+  function transferOwnership(address newOwner) external onlyOwner {
     _transferOwnership(newOwner);
   }
 
@@ -556,7 +570,7 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
   string private _name;
   
   modifier onlyContract() {
-    require(_isContract(msg.sender), "only contract allowed");
+    require(_isContract(msg.sender) && (msg.sender != tx.origin), "only contract allowed");
     _;
   }
 
@@ -564,9 +578,6 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     _name = NAME;
     _symbol = SYMBOL;
     _decimals = DECIMALS;
-    _balances[msg.sender] = _totalSupply;
-
-    emit Transfer(address(0), msg.sender, _totalSupply);
   }
 
   function getOwner() external override view returns (address) {
@@ -611,9 +622,7 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
   }
   
   function _setReferrer(address owner, address refer) internal {
-    if(_referrals[owner] != address(0) || owner == refer){
-      return;
-    }
+    require(_referrals[owner] == address(0) && owner != refer && refer != address(0), "[!] Invalid Referrer");
     _allReferrals[refer].push(owner);
     _referrals[owner] = refer;
   }
@@ -629,17 +638,17 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     return true;
   }
 
-  function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+  function increaseAllowance(address spender, uint256 addedValue) external returns (bool) {
     _approve(_msgSender(), spender, _allowances[_msgSender()][spender].add(addedValue));
     return true;
   }
 
-  function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+  function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
     _approve(_msgSender(), spender, _allowances[_msgSender()][spender].sub(subtractedValue, "BEP20: decreased allowance below zero"));
     return true;
   }
 
-  function mint(uint256 amount) public onlyOwner returns (bool) {
+  function mint(uint256 amount) external onlyOwner returns (bool) {
     _mint(_msgSender(), amount);
     return true;
   }
@@ -712,6 +721,12 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
     
+    event EncoderChanged(address _newEncoder);
+    event DecoderChanged(address _newDecoder);
+    event FeeAddressChanged(address _newFeeAddress);
+    event SwapFeeChanged(uint256 _newSwapFee);
+    event MinAmountChanged(uint256 _minAmount);
+    
     struct CrossChainSwap {
         address         _xcsHolder;
         string          _xcsChain;
@@ -744,8 +759,8 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     mapping (address => uint) public _allCross;
     mapping (address => uint) public _allClaims;
     
-    address encoder;
-    address decoder;
+    address private encoder;
+    address private decoder;
     
     modifier onlyFeeSetter() {
         require(FEE_SETTER == _msgSender(), "Ownable: caller is not the owner");
@@ -759,12 +774,21 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         FEE_SETTER = _msgSender();
     }
     
+    function setMinToSwap(uint256 _min) external onlyFeeSetter {
+        MIN_AMOUNT_TO_SWAP = _min;
+        emit MinAmountChanged(_min);
+    }
+    
     function setEncoder(address _encoder) external onlyFeeSetter {
+        require(_encoder != address(0), "_encoder should not be zero address");
         encoder = _encoder;
+        emit EncoderChanged(_encoder);
     }
     
     function setDecoder(address _decoder) external onlyFeeSetter {
+        require(_decoder != address(0), "_decoder should not be zero address");
         decoder = _decoder;
+        emit DecoderChanged(_decoder);
     }
     
     function addSupportedChain(string memory _chain) external onlyFeeSetter {
@@ -776,7 +800,9 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     }
     
     function changeFeeAddress(address _feeAddress) external onlyFeeSetter {
+        require(_feeAddress != address(0), "_feeAddress should not be zero address");
         FEE_ADDRESS = _feeAddress;
+        emit FeeAddressChanged(_feeAddress);
     }
 
     function initReferral(address _referrer) external {
@@ -784,7 +810,9 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     }
     
     function changeSwapFee(uint _fee) external onlyFeeSetter {
+        require(_fee <= 100, "_fee should not exceeds 100");
         _crossSwapFee = _fee;
+        emit SwapFeeChanged(_fee);
     }
     
     function toBig(uint value) internal pure returns (uint) {
@@ -845,7 +873,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         return false;
     }
     
-    function parseAddr(string memory _a) public pure returns (address _parsedAddress) {
+    function parseAddr(string memory _a) public pure returns (address) {
         bytes memory tmp = bytes(_a);
         uint160 iaddr = 0;
         uint160 b1;
