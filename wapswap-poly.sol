@@ -821,12 +821,12 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         return value.mul(1e18);
     }
     
-    function _takeAmount(uint256 _amount) public returns (bool) {
+    function _takeAmount(uint256 _amount) internal returns (bool) {
         _burn(_msgSender(), _amount);
         return true;
     }
     
-    function _takeFee(uint256 _amount) public returns (uint256) {
+    function _takeFee(uint256 _amount) internal returns (uint256) {
         uint256 _fee = _amount.mul(_crossSwapFee).div(1e2);
         uint256 _totalAmount = _amount.sub(_fee);
         _xcs.transferFrom(_msgSender(), FEE_ADDRESS, _fee);
