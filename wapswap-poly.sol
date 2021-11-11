@@ -865,7 +865,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         return _allClaims[_claimer];
     }
     
-    function compareStrings(string memory a, string memory b) external pure returns (bool) {
+    function compareStrings(string memory a, string memory b) internal pure returns (bool) {
         return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
     }
     
