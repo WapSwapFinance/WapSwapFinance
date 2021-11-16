@@ -448,7 +448,7 @@ contract Ownable is Context {
    * NOTE: Renouncing ownership will leave the contract without an owner,
    * thereby removing any functionality that is only available to the owner.
    */
-  function renounceOwnership() public onlyOwner {
+  function renounceOwnership() external onlyOwner {
     emit OwnershipTransferred(_owner, address(0));
     _owner = address(0);
   }
@@ -457,7 +457,7 @@ contract Ownable is Context {
    * @dev Transfers ownership of the contract to a new account (`newOwner`).
    * Can only be called by the current owner.
    */
-  function transferOwnership(address newOwner) public onlyOwner {
+  function transferOwnership(address newOwner) external onlyOwner {
     _transferOwnership(newOwner);
   }
 
@@ -638,17 +638,17 @@ abstract contract WAPSWAP_Interface is Context, IBEP20, Ownable {
     return true;
   }
 
-  function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+  function increaseAllowance(address spender, uint256 addedValue) external returns (bool) {
     _approve(_msgSender(), spender, _allowances[_msgSender()][spender].add(addedValue));
     return true;
   }
 
-  function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+  function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
     _approve(_msgSender(), spender, _allowances[_msgSender()][spender].sub(subtractedValue, "BEP20: decreased allowance below zero"));
     return true;
   }
 
-  function mint(uint256 amount) public onlyOwner returns (bool) {
+  function mint(uint256 amount) external onlyOwner returns (bool) {
     _mint(_msgSender(), amount);
     return true;
   }
