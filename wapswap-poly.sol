@@ -769,7 +769,7 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
         _;
     }
     
-    constructor (uint256 _amount) {
+    constructor () {
         _xcs = WAPSWAP_Interface(this);
         FEE_ADDRESS = _msgSender();
         FEE_SETTER = _msgSender();
