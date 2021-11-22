@@ -762,16 +762,23 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     address private encoder;
     address private decoder;
     
+    uint256 public INITIAL_DISTRIBUTION = 1_890_000;
+    
     modifier onlyFeeSetter() {
         require(FEE_SETTER == _msgSender(), "Ownable: caller is not the owner");
         _;
     }
     
-    constructor (uint256 _amount, address _wapOwner) {
-        _mint(_wapOwner, toBig(_amount));
+    constructor () {
         _xcs = WAPSWAP_Interface(this);
         FEE_ADDRESS = _msgSender();
         FEE_SETTER = _msgSender();
+    }
+    
+    function mintInitialWAP() external onlyOwner {
+        require(_distributed < INITIAL_DISTRIBUTION, '[+] Cant mint any WAP');
+        _mint(_msgSender(), toBig(INITIAL_DISTRIBUTION));
+        _distributed = _distributed.add(INITIAL_DISTRIBUTION);
     }
     
     function setMinToSwap(uint256 _min) external onlyFeeSetter {
