@@ -762,7 +762,8 @@ contract WAPSWAP is WAPSWAP_Interface('WAPSWAP', 'WAP', 18) {
     address private encoder;
     address private decoder;
     
-    uint256 public INITIAL_DISTRIBUTION = 1_890_000;
+    uint256 constant public INITIAL_DISTRIBUTION = 1_890_000;
+    uint256 public _distributed = 0;
     
     modifier onlyFeeSetter() {
         require(FEE_SETTER == _msgSender(), "Ownable: caller is not the owner");
